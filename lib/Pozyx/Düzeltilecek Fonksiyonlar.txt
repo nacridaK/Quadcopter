@@ -1,0 +1,24 @@
+protected:
+	static int i2cWriteWrite(const uint8_t reg_address, const uint8_t *pData, int size);
+	static int i2cWriteRead(uint8_t* write_data, int write_len, uint8_t* read_data, int read_len);
+public:
+	static boolean waitForFlag_safe(uint8_t interrupt_flag, int timeout_ms, uint8_t *interrupt = NULL);
+	static int regRead(uint8_t reg_address, uint8_t *pData, int size);
+	static int regWrite(uint8_t reg_address, uint8_t *pData, int size);
+	static int regFunction(uint8_t reg_address, uint8_t *params=NULL, int param_size=0, uint8_t *pData=NULL, int size=0);
+	static boolean waitForFlag(uint8_t interrupt_flag, int timeout_ms, uint8_t *interrupt = NULL);
+	static int begin(boolean print_result = false, int mode = MODE_INTERRUPT,  int interrupts = POZYX_INT_MASK_ALL, int interrupt_pin = POZYX_INT_PIN0);
+	static int writeTXBufferData(uint8_t data[], int size, int offset = 0); (BUFFER_LENGTH)
+	static int readRXBufferData(uint8_t* pData, int size); (BUFFER_LENGTH)
+	static int getDeviceIds(uint16_t devices[], int size, uint16_t remote_id = NULL); (BUFFER_LENGTH)
+
+
+i2cWriteWrite():
+	regWrite()
+
+i2cWriteRead():
+	regRead()
+	regFunction()
+	
+	
+	
