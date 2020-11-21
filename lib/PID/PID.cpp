@@ -1,22 +1,23 @@
 #include "PID.h"
 
-PID::PID(double ts, double kp, double ki, double kd, double tf)
+PID::PID(double ts, double kp, double ki, double kd, double tf, bool sat_mode, double sat_below, double sat_upper, bool clamp_mode)
 {
-	Ts = ts;
-	Kp = kp;
-	Ki = ki;
-	Kd = kd;
-	Tf = tf;
+	SetTs(ts);
+	SetControllerGains(kp, ki, kd);
+	SetTf(tf);
+	SetSaturationMode(sat_mode);
+	SetSaturationLimits(sat_below, sat_upper);
+	SetClampingMode(clamp_mode);
 }
 
-double PID::update(double err)
+double PID::Update(double err)
 {
 	error[1] = err;
-	CalculateC();
+	CalculatePID();
 	Saturation();
 	Clamping();
 	error[0] = error[1];
-	return C_sat;
+	return pid_sat;
 
 }
 
@@ -27,20 +28,20 @@ void PID::CalculateP()
 
 //void PID::CalculateI()		//I_ForwardEuler
 //{
-//	I_input = !isClamped * error[0];
-//	I = I + Ki * Ts * I_input;
+//	I_input = error[0];
+//	I = I + !isClamped * Ki * Ts * I_input;
 //}
 
 //void PID::CalculateI()		//I_BackwardEuler
 //{
-//	I_input = !isClamped * error[1];
-//	I = I + Ki * Ts * I_input;
+//	I_input = error[1];
+//	I = I + !isClamped * Ki * Ts * I_input;
 //}
 
 void PID::CalculateI()			//I_Trapezoidal
 {	
-	I_input = !isClamped * (error[1] + error[0]) / 2;
-	I = I + Ki * Ts *  I_input;
+	I_input = (error[1] + error[0]) / 2;
+	I = I + !isClamped * Ki * Ts *  I_input;
 }
 
 //void PID::CalculateD()			//D_ForwardEuler
@@ -58,32 +59,32 @@ void PID::CalculateD()			//D_Trapezoidal
 	D = (2 * Kd * (error[1] - error[0]) + (2 * Tf - Ts) * D) / (2 * Tf + Ts);
 }
 
-void PID::CalculateC()
+void PID::CalculatePID()
 {
 	CalculateP();
 	CalculateI();
 	CalculateD();
-	C = P + I + D;
+	pid = P + I + D;
 }
 
 void PID::Saturation()
 {
 	if (saturation_mode)
 	{
-		if (C < sat_limits[0])
+		if (pid < sat_limits[0])
 		{
-			C_sat = sat_limits[0];
+			pid_sat = sat_limits[0];
 			isSaturated = true;
 		}
-		else if (C > sat_limits[1])
+		else if (pid > sat_limits[1])
 		{
-			C_sat = sat_limits[1];
+			pid_sat = sat_limits[1];
 			isSaturated = true;
 		}
 	}
 	else
 	{
-		C_sat = C;
+		pid_sat = pid;
 		isSaturated = false;
 	}
 }
@@ -92,7 +93,7 @@ void PID::Clamping()
 {
 	if (saturation_mode && clamping_mode)
 	{
-		signCheck = sign(C) == sign(I_input);
+		signCheck = sign(pid) == sign(I_input);
 		isClamped = isSaturated && signCheck;
 	}
 	else
@@ -106,4 +107,62 @@ uint8_t PID::sign(double x)
 	else if (x < 0)
 		return -1;
 	return 0;
+}
+
+void PID::SetTs(double ts)
+{
+	Ts = ts;
+}
+
+void PID::SetKpGain(double kp)
+{
+	Kp = kp;
+}
+
+void PID::SetKiGain(double ki)
+{
+	Ki = ki;
+}
+
+void PID::SetKdGain(double kd)
+{
+	Kd = kd;
+}
+
+void PID::SetControllerGains(double kp, double ki, double kd)
+{
+	SetKpGain(kp);
+	SetKiGain(ki);
+	SetKdGain(kd);
+}
+
+void PID::SetTf(double tf)
+{
+	Tf = tf;
+}
+
+void PID::SetSaturationMode(bool sat_mode)
+{
+	saturation_mode = sat_mode;
+}
+
+void PID::SetClampingMode(bool clamp_mode)
+{
+	clamping_mode = clamp_mode;
+}
+
+void PID::SetBelowLimit(double sat_below)
+{
+	sat_limits[0] = sat_below;
+}
+
+void PID::SetUpperLimit(double sat_upper)
+{
+	sat_limits[1] = sat_upper;
+}
+
+void PID::SetSaturationLimits(double sat_below, double sat_upper)
+{
+	SetBelowLimit(sat_below);
+	SetUpperLimit(sat_upper);
 }
