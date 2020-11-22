@@ -22,6 +22,7 @@ private:
 	//void D_BackwardEuler();
 	//void D_Trapezoidal();
 public:
+	PID();
 	PID(double ts, double kp, double ki, double kd, double tf, bool sat_mode, double sat_below, double sat_upper, bool clamp_mode);
 	double Update(double err);
 	void SetTs(double ts);

@@ -146,6 +146,8 @@ int main(void)
 	htim3.State = HAL_TIM_STATE_READY;
 	HAL_TIM_PWM_Start_DMA(&htim3, TIM_CHANNEL_4, dshot[3].PWM_Array, 32);
 	
+	Pozyx.begin();
+	
 	HAL_TIM_RegisterCallback(&htim6, HAL_TIM_PERIOD_ELAPSED_CB_ID, &PID_Loop);
 	HAL_TIM_Base_Start_IT(&htim6);
 

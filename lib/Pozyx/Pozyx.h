@@ -231,7 +231,7 @@ typedef struct __attribute__((packed))_device_range {
 class PozyxClass
 {
 private:
-	I2C_HandleTypeDef *hi2c;
+		I2C_HandleTypeDef *hi2c;
     uint32_t timeout;
 
 
