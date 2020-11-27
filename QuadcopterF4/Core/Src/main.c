@@ -23,6 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
+#include <stdio.h>
 #include "DShot/DShot.h"
 #include "Pozyx/Pozyx.h"
 #include "Pozyx/Pozyx_definitions.h"
@@ -32,6 +33,11 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+
+struct Durum
+{
+	uint8_t durum;
+};
 
 /* USER CODE END PTD */
 
@@ -47,8 +53,8 @@
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
 
+TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
-TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim5;
 TIM_HandleTypeDef htim6;
 DMA_HandleTypeDef hdma_tim3_ch1_trig;
@@ -64,14 +70,16 @@ uint8_t motorNo[] = {1, 2, 3, 4};
 uint16_t throttle[] = {70, 70, 70, 70};
 uint8_t emniyet;
 
-PozyxClass Pozyx(&hi2c1, 1000);
-uint8_t durum;
-euler_angles_t acilar;
+PozyxClass Pozyx(&hi2c1, 100);
+euler_angles_t acilar, referans;
+Durum durum;
 sensor_data_t sensor;
 
-uint32_t uwIC2Value = 0;
-double uwDutyCycle = 0;
-double uwFrequency = 0;
+uint32_t uwIC1Value[4];
+uint32_t uwIC2Value[4];
+double uwDutyCycle[4];
+double uwFrequency[4];
+
 uint16_t w = 70;
 double W[4];
 double k;
@@ -86,7 +94,7 @@ static void MX_TIM3_Init(void);
 static void MX_TIM5_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_TIM6_Init(void);
-static void MX_TIM4_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 
 void DShot_PWM_Array_Update(TIM_HandleTypeDef*);
@@ -134,7 +142,7 @@ int main(void)
   MX_TIM5_Init();
   MX_I2C1_Init();
   MX_TIM6_Init();
-  MX_TIM4_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
 	
 	HAL_TIM_RegisterCallback(&htim3, HAL_TIM_PWM_PULSE_FINISHED_CB_ID, &DShot_PWM_Array_Update);
@@ -146,10 +154,21 @@ int main(void)
 	htim3.State = HAL_TIM_STATE_READY;
 	HAL_TIM_PWM_Start_DMA(&htim3, TIM_CHANNEL_4, dshot[3].PWM_Array, 32);
 	
-	Pozyx.begin();
+//	durum.durum = Pozyx.begin();
+
+	HAL_TIM_RegisterCallback(&htim2, HAL_TIM_IC_CAPTURE_CB_ID, &FlySky12);
+	HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_1);
+	HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_2);
+	HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_3);
+	HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_4);
+	HAL_TIM_RegisterCallback(&htim5, HAL_TIM_IC_CAPTURE_CB_ID, &FlySky34);
+	HAL_TIM_IC_Start_IT(&htim5, TIM_CHANNEL_2);
+	HAL_TIM_IC_Start_IT(&htim5, TIM_CHANNEL_1);
+	HAL_TIM_IC_Start_IT(&htim5, TIM_CHANNEL_4);
+	HAL_TIM_IC_Start_IT(&htim5, TIM_CHANNEL_3);
 	
-	HAL_TIM_RegisterCallback(&htim6, HAL_TIM_PERIOD_ELAPSED_CB_ID, &PID_Loop);
-	HAL_TIM_Base_Start_IT(&htim6);
+//	HAL_TIM_RegisterCallback(&htim6, HAL_TIM_PERIOD_ELAPSED_CB_ID, &PID_Loop);
+//	HAL_TIM_Base_Start_IT(&htim6);
 
   /* USER CODE END 2 */
 
@@ -157,8 +176,8 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {	
-		Pozyx.getEulerAngles_deg(&acilar);
-		Pozyx.getAllSensorData(&sensor);
+//		Pozyx.getEulerAngles_deg(&acilar);
+//		Pozyx.getAllSensorData(&sensor);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -246,6 +265,85 @@ static void MX_I2C1_Init(void)
 }
 
 /**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_SlaveConfigTypeDef sSlaveConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_IC_InitTypeDef sConfigIC = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 0;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 4294967295;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_IC_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sSlaveConfig.SlaveMode = TIM_SLAVEMODE_RESET;
+  sSlaveConfig.InputTrigger = TIM_TS_TI1FP1;
+  sSlaveConfig.TriggerPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
+  sSlaveConfig.TriggerFilter = 0;
+  if (HAL_TIM_SlaveConfigSynchro(&htim2, &sSlaveConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
+  sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
+  sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
+  sConfigIC.ICFilter = 0;
+  if (HAL_TIM_IC_ConfigChannel(&htim2, &sConfigIC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_FALLING;
+  sConfigIC.ICSelection = TIM_ICSELECTION_INDIRECTTI;
+  if (HAL_TIM_IC_ConfigChannel(&htim2, &sConfigIC, TIM_CHANNEL_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
+  sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
+  if (HAL_TIM_IC_ConfigChannel(&htim2, &sConfigIC, TIM_CHANNEL_3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_FALLING;
+  sConfigIC.ICSelection = TIM_ICSELECTION_INDIRECTTI;
+  if (HAL_TIM_IC_ConfigChannel(&htim2, &sConfigIC, TIM_CHANNEL_4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
+
+}
+
+/**
   * @brief TIM3 Initialization Function
   * @param None
   * @retval None
@@ -307,81 +405,6 @@ static void MX_TIM3_Init(void)
 }
 
 /**
-  * @brief TIM4 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM4_Init(void)
-{
-
-  /* USER CODE BEGIN TIM4_Init 0 */
-
-  /* USER CODE END TIM4_Init 0 */
-
-  TIM_SlaveConfigTypeDef sSlaveConfig = {0};
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_IC_InitTypeDef sConfigIC = {0};
-
-  /* USER CODE BEGIN TIM4_Init 1 */
-
-  /* USER CODE END TIM4_Init 1 */
-  htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 0;
-  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 65535;
-  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_IC_Init(&htim4) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sSlaveConfig.SlaveMode = TIM_SLAVEMODE_RESET;
-  sSlaveConfig.InputTrigger = TIM_TS_TI2FP2;
-  sSlaveConfig.TriggerPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
-  sSlaveConfig.TriggerFilter = 0;
-  if (HAL_TIM_SlaveConfigSynchro(&htim4, &sSlaveConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
-  sConfigIC.ICSelection = TIM_ICSELECTION_INDIRECTTI;
-  sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
-  sConfigIC.ICFilter = 0;
-  if (HAL_TIM_IC_ConfigChannel(&htim4, &sConfigIC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
-  if (HAL_TIM_IC_ConfigChannel(&htim4, &sConfigIC, TIM_CHANNEL_2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_IC_ConfigChannel(&htim4, &sConfigIC, TIM_CHANNEL_3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigIC.ICSelection = TIM_ICSELECTION_INDIRECTTI;
-  if (HAL_TIM_IC_ConfigChannel(&htim4, &sConfigIC, TIM_CHANNEL_4) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM4_Init 2 */
-
-  /* USER CODE END TIM4_Init 2 */
-
-}
-
-/**
   * @brief TIM5 Initialization Function
   * @param None
   * @retval None
@@ -428,7 +451,7 @@ static void MX_TIM5_Init(void)
   {
     Error_Handler();
   }
-  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
+  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_FALLING;
   sConfigIC.ICSelection = TIM_ICSELECTION_INDIRECTTI;
   sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
   sConfigIC.ICFilter = 0;
@@ -436,16 +459,19 @@ static void MX_TIM5_Init(void)
   {
     Error_Handler();
   }
+  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
   sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
   if (HAL_TIM_IC_ConfigChannel(&htim5, &sConfigIC, TIM_CHANNEL_2) != HAL_OK)
   {
     Error_Handler();
   }
+  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_FALLING;
   sConfigIC.ICSelection = TIM_ICSELECTION_INDIRECTTI;
   if (HAL_TIM_IC_ConfigChannel(&htim5, &sConfigIC, TIM_CHANNEL_3) != HAL_OK)
   {
     Error_Handler();
   }
+  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
   sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
   if (HAL_TIM_IC_ConfigChannel(&htim5, &sConfigIC, TIM_CHANNEL_4) != HAL_OK)
   {
@@ -689,21 +715,80 @@ void DShot_PWM_Array_Update(TIM_HandleTypeDef *htim)
 
 void FlySky12(TIM_HandleTypeDef *htim)
 {
-	if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1)
-  {
-    /* Get the Input Capture value */
-    uwIC2Value = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
-    if (uwIC2Value)
-    {
-      uwDutyCycle = (100.0 * HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_2)) / uwIC2Value;
-      uwFrequency = HAL_RCC_GetPCLK1Freq() / (htim->Init.Prescaler + 1.0) / uwIC2Value;
-    }
-    else
-    {
-      uwDutyCycle = 0;
-      uwFrequency = 0;
-    }
-  }
+	switch (htim->Channel)
+	{
+		case HAL_TIM_ACTIVE_CHANNEL_1:
+			/* Get the Input Capture value */
+			uwIC2Value[0] = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
+			if (uwIC2Value[0])
+			{
+				uwIC1Value[0] = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_2);
+				uwDutyCycle[0] = (100.0 * uwIC1Value[0]) / uwIC2Value[0];
+				uwFrequency[0] = HAL_RCC_GetPCLK2Freq() / (htim->Init.Prescaler + 1.0) / uwIC2Value[0];
+			}
+			else
+			{
+				uwDutyCycle[0] = 0;
+				uwFrequency[0] = 0;
+			}
+				break;
+		case HAL_TIM_ACTIVE_CHANNEL_3:
+			/* Get the Input Capture value */
+			uwIC2Value[1] = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_3);
+			if (uwIC2Value[1])
+			{
+				uwIC1Value[1] = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_4);
+				uwDutyCycle[1] = (100.0 * uwIC1Value[1]) / uwIC2Value[1];
+				uwFrequency[1] = HAL_RCC_GetPCLK2Freq() / (htim->Init.Prescaler + 1.0) / uwIC2Value[1];
+			}
+			else
+			{
+				uwDutyCycle[1] = 0;
+				uwFrequency[1] = 0;
+			}
+			break;
+		default:
+			break;
+	}
+}
+
+void FlySky34(TIM_HandleTypeDef *htim)
+{
+	switch (htim->Channel)
+	{
+		case HAL_TIM_ACTIVE_CHANNEL_2:
+			/* Get the Input Capture value */
+			uwIC2Value[2] = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_2);
+			if (uwIC2Value[2])
+			{
+				uwIC1Value[2] = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
+				uwDutyCycle[2] = (100.0 * uwIC1Value[2]) / uwIC2Value[2];
+				uwFrequency[2] = HAL_RCC_GetPCLK2Freq() / (htim->Init.Prescaler + 1.0) / uwIC2Value[2];
+			}
+			else
+			{
+				uwDutyCycle[2] = 0;
+				uwFrequency[2] = 0;
+			}
+				break;
+		case HAL_TIM_ACTIVE_CHANNEL_4:
+			/* Get the Input Capture value */
+			uwIC2Value[3] = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_4);
+			if (uwIC2Value[3])
+			{
+				uwIC1Value[3] = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_3);
+				uwDutyCycle[3] = (100.0 * uwIC1Value[3]) / uwIC2Value[3];
+				uwFrequency[3] = HAL_RCC_GetPCLK2Freq() / (htim->Init.Prescaler + 1.0) / uwIC2Value[3];
+			}
+			else
+			{
+				uwDutyCycle[3] = 0;
+				uwFrequency[3] = 0;
+			}
+			break;
+		default:
+			break;
+	}
 }
 
 /* USER CODE END 4 */
