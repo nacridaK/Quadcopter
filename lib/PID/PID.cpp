@@ -1,5 +1,9 @@
 #include "PID.h"
 
+PID::PID()
+{
+}
+
 PID::PID(double ts, double kp, double ki, double kd, double tf, bool sat_mode, double sat_below, double sat_upper, bool clamp_mode)
 {
 	SetTs(ts);
@@ -10,15 +14,18 @@ PID::PID(double ts, double kp, double ki, double kd, double tf, bool sat_mode, d
 	SetClampingMode(clamp_mode);
 }
 
-double PID::Update(double err)
+void PID::Update(double err)
 {
 	error[1] = err;
 	CalculatePID();
 	Saturation();
 	Clamping();
 	error[0] = error[1];
-	return pid_sat;
+}
 
+double PID::GetOutput()
+{
+	return pid_sat;
 }
 
 void PID::CalculateP()

@@ -24,7 +24,8 @@ private:
 public:
 	PID();
 	PID(double ts, double kp, double ki, double kd, double tf, bool sat_mode, double sat_below, double sat_upper, bool clamp_mode);
-	double Update(double err);
+	void Update(double err);
+	double GetOutput();
 	void SetTs(double ts);
 	void SetKpGain(double kp);
 	void SetKiGain(double ki);

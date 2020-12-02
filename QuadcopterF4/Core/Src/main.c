@@ -34,11 +34,6 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
-struct Durum
-{
-	uint8_t durum;
-};
-
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -72,14 +67,14 @@ uint8_t emniyet;
 
 PozyxClass Pozyx(&hi2c1, 100);
 euler_angles_t acilar, referans;
-Durum durum;
-sensor_data_t sensor;
+uint8_t durum;
 
 uint32_t uwIC1Value[4];
 uint32_t uwIC2Value[4];
 double uwDutyCycle[4];
 double uwFrequency[4];
 
+PID pid_roll, pid_pitch;
 uint16_t w = 70;
 double W[4];
 double k;
@@ -153,8 +148,6 @@ int main(void)
 	HAL_TIM_PWM_Start_DMA(&htim3, TIM_CHANNEL_3, dshot[2].PWM_Array, 32);
 	htim3.State = HAL_TIM_STATE_READY;
 	HAL_TIM_PWM_Start_DMA(&htim3, TIM_CHANNEL_4, dshot[3].PWM_Array, 32);
-	
-//	durum.durum = Pozyx.begin();
 
 	HAL_TIM_RegisterCallback(&htim2, HAL_TIM_IC_CAPTURE_CB_ID, &FlySky12);
 	HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_1);
@@ -167,8 +160,12 @@ int main(void)
 	HAL_TIM_IC_Start_IT(&htim5, TIM_CHANNEL_4);
 	HAL_TIM_IC_Start_IT(&htim5, TIM_CHANNEL_3);
 	
-//	HAL_TIM_RegisterCallback(&htim6, HAL_TIM_PERIOD_ELAPSED_CB_ID, &PID_Loop);
-//	HAL_TIM_Base_Start_IT(&htim6);
+	HAL_TIM_RegisterCallback(&htim6, HAL_TIM_PERIOD_ELAPSED_CB_ID, &PID_Loop);
+	HAL_TIM_Base_Start_IT(&htim6);
+	
+	durum = Pozyx.begin();
+	while(durum != POZYX_SUCCESS)
+		durum = Pozyx.begin();
 
   /* USER CODE END 2 */
 
@@ -176,8 +173,9 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {	
-//		Pozyx.getEulerAngles_deg(&acilar);
-//		Pozyx.getAllSensorData(&sensor);
+	durum = Pozyx.getEulerAngles_deg(&acilar);
+	while(durum != POZYX_SUCCESS)
+		durum = Pozyx.begin();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -503,7 +501,7 @@ static void MX_TIM6_Init(void)
   htim6.Instance = TIM6;
   htim6.Init.Prescaler = 0;
   htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim6.Init.Period = 65535;
+  htim6.Init.Period = 16799;
   htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
   {
@@ -680,8 +678,12 @@ static void MX_GPIO_Init(void)
 
 void PID_Loop(TIM_HandleTypeDef *htim)
 {
-	//Pozyx.getEulerAngles_deg(&acilar);
-	//Pozyx.getAllSensorData(&sensor);
+	if(durum == POZYX_SUCCESS)
+	{
+		pid_roll.Update(referans.roll - acilar.roll);
+		pid_pitch.Update(referans.pitch - acilar.pitch);
+	}
+	HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
 }
 
 void DShot_PWM_Array_Update(TIM_HandleTypeDef *htim)
@@ -689,23 +691,27 @@ void DShot_PWM_Array_Update(TIM_HandleTypeDef *htim)
 	switch (htim->Channel)
 	{
 		case HAL_TIM_ACTIVE_CHANNEL_1:
-//			dshot[0].update(throttle[motorNo[0] - 1] * emniyet);	
-			W[0] = (w + k * acilar.roll);
+//			dshot[0].update(throttle[motorNo[0] - 1] * emniyet);
+			W[0] = w + pid_roll.GetOutput();
+//			W[0] = (w + k * acilar.roll);
 			dshot[0].update((uint16_t)W[0] * emniyet);
 			break;
 		case HAL_TIM_ACTIVE_CHANNEL_2:
 //			dshot[1].update(throttle[motorNo[1] - 1] * emniyet);
-			W[1] = (w + k * acilar.pitch);
+			W[1] = w + pid_pitch.GetOutput();
+//			W[1] = (w + k * acilar.pitch);
 			dshot[1].update((uint16_t)W[1] * emniyet);
 			break;
 		case HAL_TIM_ACTIVE_CHANNEL_3:
 //			dshot[2].update(throttle[motorNo[2] - 1] * emniyet);
-			W[2] = (w - k * acilar.roll);
+			W[2] = w - pid_roll.GetOutput();
+//			W[2] = (w - k * acilar.roll);
 			dshot[2].update((uint16_t)W[2] * emniyet);
 			break;
 		case HAL_TIM_ACTIVE_CHANNEL_4:
 //			dshot[3].update(throttle[motorNo[3] - 1] * emniyet);
-			W[3] = (w - k * acilar.pitch);
+			W[3] = w - pid_pitch.GetOutput();
+//			W[3] = (w - k * acilar.pitch);
 			dshot[3].update((uint16_t)W[3] * emniyet);
 			break;
 		case HAL_TIM_ACTIVE_CHANNEL_CLEARED:
@@ -770,7 +776,7 @@ void FlySky34(TIM_HandleTypeDef *htim)
 				uwDutyCycle[2] = 0;
 				uwFrequency[2] = 0;
 			}
-				break;
+			break;
 		case HAL_TIM_ACTIVE_CHANNEL_4:
 			/* Get the Input Capture value */
 			uwIC2Value[3] = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_4);
