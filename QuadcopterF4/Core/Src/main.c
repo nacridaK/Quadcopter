@@ -28,6 +28,8 @@
 #include "Pozyx/Pozyx.h"
 #include "Pozyx/Pozyx_definitions.h"
 #include "PID/PID.h"
+#include "iBus/iBus.h"
+#include "Servo/Servo.h"
 
 /* USER CODE END Includes */
 
@@ -48,14 +50,16 @@
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
 
-TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim5;
-TIM_HandleTypeDef htim6;
+TIM_HandleTypeDef htim7;
 DMA_HandleTypeDef hdma_tim3_ch1_trig;
 DMA_HandleTypeDef hdma_tim3_ch2;
 DMA_HandleTypeDef hdma_tim3_ch3;
 DMA_HandleTypeDef hdma_tim3_ch4_up;
+
+UART_HandleTypeDef huart6;
+DMA_HandleTypeDef hdma_usart6_rx;
 
 /* USER CODE BEGIN PV */
 
@@ -63,7 +67,7 @@ DShot dshot[] = {139, 139, 139, 139};
 
 uint8_t motorNo[] = {1, 2, 3, 4};
 uint16_t throttle[] = {70, 70, 70, 70};
-uint8_t emniyet;
+uint8_t emniyet = 1;
 
 PozyxClass Pozyx(&hi2c1, 100);
 euler_angles_t acilar, referans;
@@ -79,6 +83,11 @@ uint16_t w = 70;
 double W[4];
 double k;
 
+const uint16_t throttle_max = 1000;
+
+iBus *ibus;
+Servo *servo;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -86,16 +95,18 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_TIM3_Init(void);
-static void MX_TIM5_Init(void);
 static void MX_I2C1_Init(void);
-static void MX_TIM6_Init(void);
-static void MX_TIM2_Init(void);
+static void MX_USART6_UART_Init(void);
+static void MX_TIM5_Init(void);
+static void MX_TIM7_Init(void);
 /* USER CODE BEGIN PFP */
 
 void DShot_PWM_Array_Update(TIM_HandleTypeDef*);
 void PID_Loop(TIM_HandleTypeDef*);
-void FlySky12(TIM_HandleTypeDef*);
-void FlySky34(TIM_HandleTypeDef*);
+
+void Bitti(UART_HandleTypeDef*);
+void Geliyor(TIM_HandleTypeDef*);
+void Gelmiyor(TIM_HandleTypeDef*);
 
 /* USER CODE END PFP */
 
@@ -134,10 +145,10 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_TIM3_Init();
-  MX_TIM5_Init();
   MX_I2C1_Init();
-  MX_TIM6_Init();
-  MX_TIM2_Init();
+  MX_USART6_UART_Init();
+  MX_TIM5_Init();
+  MX_TIM7_Init();
   /* USER CODE BEGIN 2 */
 	
 	HAL_TIM_RegisterCallback(&htim3, HAL_TIM_PWM_PULSE_FINISHED_CB_ID, &DShot_PWM_Array_Update);
@@ -147,25 +158,22 @@ int main(void)
 	htim3.State = HAL_TIM_STATE_READY;
 	HAL_TIM_PWM_Start_DMA(&htim3, TIM_CHANNEL_3, dshot[2].PWM_Array, 32);
 	htim3.State = HAL_TIM_STATE_READY;
-	HAL_TIM_PWM_Start_DMA(&htim3, TIM_CHANNEL_4, dshot[3].PWM_Array, 32);
+	HAL_TIM_PWM_Start_DMA(&htim3, TIM_CHANNEL_4, dshot[3].PWM_Array, 32);	
+	
+	HAL_TIM_RegisterCallback(&htim5, HAL_TIM_IC_CAPTURE_CB_ID, &Geliyor);
+	HAL_TIM_RegisterCallback(&htim5, HAL_TIM_OC_DELAY_ELAPSED_CB_ID, &Gelmiyor);
+	
+	HAL_TIM_RegisterCallback(&htim7, HAL_TIM_PERIOD_ELAPSED_CB_ID, &PID_Loop);
+	HAL_TIM_Base_Start_IT(&htim7);
+	
+	HAL_UART_RegisterCallback(&huart6, HAL_UART_RX_COMPLETE_CB_ID, &Bitti);
 
-	HAL_TIM_RegisterCallback(&htim2, HAL_TIM_IC_CAPTURE_CB_ID, &FlySky12);
-	HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_1);
-	HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_2);
-	HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_3);
-	HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_4);
-	HAL_TIM_RegisterCallback(&htim5, HAL_TIM_IC_CAPTURE_CB_ID, &FlySky34);
-	HAL_TIM_IC_Start_IT(&htim5, TIM_CHANNEL_2);
-	HAL_TIM_IC_Start_IT(&htim5, TIM_CHANNEL_1);
-	HAL_TIM_IC_Start_IT(&htim5, TIM_CHANNEL_4);
-	HAL_TIM_IC_Start_IT(&htim5, TIM_CHANNEL_3);
+	ibus = new iBus(&huart6, &htim5, TIM_CHANNEL_2, TIM_CHANNEL_1, TIM_CHANNEL_3);
+	servo = new Servo(ibus, 2);
 	
-	HAL_TIM_RegisterCallback(&htim6, HAL_TIM_PERIOD_ELAPSED_CB_ID, &PID_Loop);
-	HAL_TIM_Base_Start_IT(&htim6);
-	
-	durum = Pozyx.begin();
-	while(durum != POZYX_SUCCESS)
-		durum = Pozyx.begin();
+//	durum = Pozyx.begin();
+//	while(durum != POZYX_SUCCESS)
+//		durum = Pozyx.begin();
 
   /* USER CODE END 2 */
 
@@ -173,9 +181,9 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {	
-	durum = Pozyx.getEulerAngles_deg(&acilar);
-	while(durum != POZYX_SUCCESS)
-		durum = Pozyx.begin();
+//	durum = Pozyx.getEulerAngles_deg(&acilar);
+//	while(durum != POZYX_SUCCESS)
+//		durum = Pozyx.begin();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -199,10 +207,9 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
   RCC_OscInitStruct.PLL.PLLM = 8;
@@ -259,85 +266,6 @@ static void MX_I2C1_Init(void)
   /* USER CODE BEGIN I2C1_Init 2 */
 
   /* USER CODE END I2C1_Init 2 */
-
-}
-
-/**
-  * @brief TIM2 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM2_Init(void)
-{
-
-  /* USER CODE BEGIN TIM2_Init 0 */
-
-  /* USER CODE END TIM2_Init 0 */
-
-  TIM_SlaveConfigTypeDef sSlaveConfig = {0};
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_IC_InitTypeDef sConfigIC = {0};
-
-  /* USER CODE BEGIN TIM2_Init 1 */
-
-  /* USER CODE END TIM2_Init 1 */
-  htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 0;
-  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 4294967295;
-  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_IC_Init(&htim2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sSlaveConfig.SlaveMode = TIM_SLAVEMODE_RESET;
-  sSlaveConfig.InputTrigger = TIM_TS_TI1FP1;
-  sSlaveConfig.TriggerPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
-  sSlaveConfig.TriggerFilter = 0;
-  if (HAL_TIM_SlaveConfigSynchro(&htim2, &sSlaveConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
-  sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
-  sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
-  sConfigIC.ICFilter = 0;
-  if (HAL_TIM_IC_ConfigChannel(&htim2, &sConfigIC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_FALLING;
-  sConfigIC.ICSelection = TIM_ICSELECTION_INDIRECTTI;
-  if (HAL_TIM_IC_ConfigChannel(&htim2, &sConfigIC, TIM_CHANNEL_2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
-  sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
-  if (HAL_TIM_IC_ConfigChannel(&htim2, &sConfigIC, TIM_CHANNEL_3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_FALLING;
-  sConfigIC.ICSelection = TIM_ICSELECTION_INDIRECTTI;
-  if (HAL_TIM_IC_ConfigChannel(&htim2, &sConfigIC, TIM_CHANNEL_4) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM2_Init 2 */
-
-  /* USER CODE END TIM2_Init 2 */
 
 }
 
@@ -416,18 +344,23 @@ static void MX_TIM5_Init(void)
 
   TIM_SlaveConfigTypeDef sSlaveConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
   TIM_IC_InitTypeDef sConfigIC = {0};
 
   /* USER CODE BEGIN TIM5_Init 1 */
 
   /* USER CODE END TIM5_Init 1 */
   htim5.Instance = TIM5;
-  htim5.Init.Prescaler = 0;
+  htim5.Init.Prescaler = 27999;
   htim5.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim5.Init.Period = 4294967295;
+  htim5.Init.Period = 14;
   htim5.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim5.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim5) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_OC_Init(&htim5) != HAL_OK)
   {
     Error_Handler();
   }
@@ -449,29 +382,24 @@ static void MX_TIM5_Init(void)
   {
     Error_Handler();
   }
-  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_FALLING;
-  sConfigIC.ICSelection = TIM_ICSELECTION_INDIRECTTI;
-  sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
-  sConfigIC.ICFilter = 0;
-  if (HAL_TIM_IC_ConfigChannel(&htim5, &sConfigIC, TIM_CHANNEL_1) != HAL_OK)
+  sConfigOC.OCMode = TIM_OCMODE_TIMING;
+  sConfigOC.Pulse = 9;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_OC_ConfigChannel(&htim5, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
   {
     Error_Handler();
   }
   sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
   sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
+  sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
+  sConfigIC.ICFilter = 0;
   if (HAL_TIM_IC_ConfigChannel(&htim5, &sConfigIC, TIM_CHANNEL_2) != HAL_OK)
   {
     Error_Handler();
   }
-  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_FALLING;
-  sConfigIC.ICSelection = TIM_ICSELECTION_INDIRECTTI;
-  if (HAL_TIM_IC_ConfigChannel(&htim5, &sConfigIC, TIM_CHANNEL_3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
-  sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
-  if (HAL_TIM_IC_ConfigChannel(&htim5, &sConfigIC, TIM_CHANNEL_4) != HAL_OK)
+  sConfigOC.Pulse = 15;
+  if (HAL_TIM_OC_ConfigChannel(&htim5, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
   {
     Error_Handler();
   }
@@ -482,40 +410,73 @@ static void MX_TIM5_Init(void)
 }
 
 /**
-  * @brief TIM6 Initialization Function
+  * @brief TIM7 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_TIM6_Init(void)
+static void MX_TIM7_Init(void)
 {
 
-  /* USER CODE BEGIN TIM6_Init 0 */
+  /* USER CODE BEGIN TIM7_Init 0 */
 
-  /* USER CODE END TIM6_Init 0 */
+  /* USER CODE END TIM7_Init 0 */
 
   TIM_MasterConfigTypeDef sMasterConfig = {0};
 
-  /* USER CODE BEGIN TIM6_Init 1 */
+  /* USER CODE BEGIN TIM7_Init 1 */
 
-  /* USER CODE END TIM6_Init 1 */
-  htim6.Instance = TIM6;
-  htim6.Init.Prescaler = 0;
-  htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim6.Init.Period = 16799;
-  htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
+  /* USER CODE END TIM7_Init 1 */
+  htim7.Instance = TIM7;
+  htim7.Init.Prescaler = 0;
+  htim7.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim7.Init.Period = 16799;
+  htim7.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim7) != HAL_OK)
   {
     Error_Handler();
   }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim6, &sMasterConfig) != HAL_OK)
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim7, &sMasterConfig) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN TIM6_Init 2 */
+  /* USER CODE BEGIN TIM7_Init 2 */
 
-  /* USER CODE END TIM6_Init 2 */
+  /* USER CODE END TIM7_Init 2 */
+
+}
+
+/**
+  * @brief USART6 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART6_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART6_Init 0 */
+
+  /* USER CODE END USART6_Init 0 */
+
+  /* USER CODE BEGIN USART6_Init 1 */
+
+  /* USER CODE END USART6_Init 1 */
+  huart6.Instance = USART6;
+  huart6.Init.BaudRate = 115200;
+  huart6.Init.WordLength = UART_WORDLENGTH_8B;
+  huart6.Init.StopBits = UART_STOPBITS_1;
+  huart6.Init.Parity = UART_PARITY_NONE;
+  huart6.Init.Mode = UART_MODE_RX;
+  huart6.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart6.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_HalfDuplex_Init(&huart6) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART6_Init 2 */
+
+  /* USER CODE END USART6_Init 2 */
 
 }
 
@@ -527,6 +488,7 @@ static void MX_DMA_Init(void)
 
   /* DMA controller clock enable */
   __HAL_RCC_DMA1_CLK_ENABLE();
+  __HAL_RCC_DMA2_CLK_ENABLE();
 
   /* DMA interrupt init */
   /* DMA1_Stream2_IRQn interrupt configuration */
@@ -541,6 +503,9 @@ static void MX_DMA_Init(void)
   /* DMA1_Stream7_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Stream7_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream7_IRQn);
+  /* DMA2_Stream1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);
 
 }
 
@@ -691,106 +656,63 @@ void DShot_PWM_Array_Update(TIM_HandleTypeDef *htim)
 	switch (htim->Channel)
 	{
 		case HAL_TIM_ACTIVE_CHANNEL_1:
-//			dshot[0].update(throttle[motorNo[0] - 1] * emniyet);
-			W[0] = w + pid_roll.GetOutput();
+			if (throttle[motorNo[0] - 1] > throttle_max)
+				throttle[motorNo[0] - 1] = throttle_max;
+			dshot[0].update(throttle[motorNo[0] - 1] * (emniyet == 1));
+//			W[0] = w + pid_roll.GetOutput();
 //			W[0] = (w + k * acilar.roll);
-			dshot[0].update((uint16_t)W[0] * emniyet);
+//			dshot[0].update((uint16_t)W[0] * emniyet);
 			break;
 		case HAL_TIM_ACTIVE_CHANNEL_2:
-//			dshot[1].update(throttle[motorNo[1] - 1] * emniyet);
-			W[1] = w + pid_pitch.GetOutput();
+			if (throttle[motorNo[1] - 1] > throttle_max)
+				throttle[motorNo[1] - 1] = throttle_max;
+			dshot[1].update(throttle[motorNo[1] - 1] * (emniyet == 1));
+//			W[1] = w + pid_pitch.GetOutput();
 //			W[1] = (w + k * acilar.pitch);
-			dshot[1].update((uint16_t)W[1] * emniyet);
+//			dshot[1].update((uint16_t)W[1] * emniyet);
 			break;
 		case HAL_TIM_ACTIVE_CHANNEL_3:
-//			dshot[2].update(throttle[motorNo[2] - 1] * emniyet);
-			W[2] = w - pid_roll.GetOutput();
+			if (throttle[motorNo[2] - 1] > throttle_max)
+				throttle[motorNo[2] - 1] = throttle_max;
+			dshot[2].update(throttle[motorNo[2] - 1] * (emniyet == 1));
+//			W[2] = w - pid_roll.GetOutput();
 //			W[2] = (w - k * acilar.roll);
-			dshot[2].update((uint16_t)W[2] * emniyet);
+//			dshot[2].update((uint16_t)W[2] * emniyet);
 			break;
 		case HAL_TIM_ACTIVE_CHANNEL_4:
-//			dshot[3].update(throttle[motorNo[3] - 1] * emniyet);
-			W[3] = w - pid_pitch.GetOutput();
+			if (throttle[motorNo[3] - 1] > throttle_max)
+				throttle[motorNo[3] - 1] = throttle_max;
+			dshot[3].update(throttle[motorNo[3] - 1] * (emniyet == 1));
+//			W[3] = w - pid_pitch.GetOutput();
 //			W[3] = (w - k * acilar.pitch);
-			dshot[3].update((uint16_t)W[3] * emniyet);
+//			dshot[3].update((uint16_t)W[3] * emniyet);
 			break;
 		case HAL_TIM_ACTIVE_CHANNEL_CLEARED:
 			break;
 	}
 }
 
-void FlySky12(TIM_HandleTypeDef *htim)
+void Bitti(UART_HandleTypeDef *huart)
+{
+	ibus->RXComplete();
+	for(uint8_t i = 0; i < 4; i++)
+		throttle[i] = servo->ChannelValue();
+}
+
+void Geliyor(TIM_HandleTypeDef *htim)
+{
+	ibus->Receiving();
+}
+
+void Gelmiyor(TIM_HandleTypeDef *htim)
 {
 	switch (htim->Channel)
 	{
 		case HAL_TIM_ACTIVE_CHANNEL_1:
-			/* Get the Input Capture value */
-			uwIC2Value[0] = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
-			if (uwIC2Value[0])
-			{
-				uwIC1Value[0] = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_2);
-				uwDutyCycle[0] = (100.0 * uwIC1Value[0]) / uwIC2Value[0];
-				uwFrequency[0] = HAL_RCC_GetPCLK2Freq() / (htim->Init.Prescaler + 1.0) / uwIC2Value[0];
-			}
-			else
-			{
-				uwDutyCycle[0] = 0;
-				uwFrequency[0] = 0;
-			}
-				break;
+			ibus->Idle();
+			break;
 		case HAL_TIM_ACTIVE_CHANNEL_3:
-			/* Get the Input Capture value */
-			uwIC2Value[1] = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_3);
-			if (uwIC2Value[1])
-			{
-				uwIC1Value[1] = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_4);
-				uwDutyCycle[1] = (100.0 * uwIC1Value[1]) / uwIC2Value[1];
-				uwFrequency[1] = HAL_RCC_GetPCLK2Freq() / (htim->Init.Prescaler + 1.0) / uwIC2Value[1];
-			}
-			else
-			{
-				uwDutyCycle[1] = 0;
-				uwFrequency[1] = 0;
-			}
-			break;
-		default:
-			break;
-	}
-}
-
-void FlySky34(TIM_HandleTypeDef *htim)
-{
-	switch (htim->Channel)
-	{
-		case HAL_TIM_ACTIVE_CHANNEL_2:
-			/* Get the Input Capture value */
-			uwIC2Value[2] = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_2);
-			if (uwIC2Value[2])
-			{
-				uwIC1Value[2] = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
-				uwDutyCycle[2] = (100.0 * uwIC1Value[2]) / uwIC2Value[2];
-				uwFrequency[2] = HAL_RCC_GetPCLK2Freq() / (htim->Init.Prescaler + 1.0) / uwIC2Value[2];
-			}
-			else
-			{
-				uwDutyCycle[2] = 0;
-				uwFrequency[2] = 0;
-			}
-			break;
-		case HAL_TIM_ACTIVE_CHANNEL_4:
-			/* Get the Input Capture value */
-			uwIC2Value[3] = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_4);
-			if (uwIC2Value[3])
-			{
-				uwIC1Value[3] = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_3);
-				uwDutyCycle[3] = (100.0 * uwIC1Value[3]) / uwIC2Value[3];
-				uwFrequency[3] = HAL_RCC_GetPCLK2Freq() / (htim->Init.Prescaler + 1.0) / uwIC2Value[3];
-			}
-			else
-			{
-				uwDutyCycle[3] = 0;
-				uwFrequency[3] = 0;
-			}
+			ibus->NotReceiving();
 			break;
 		default:
 			break;

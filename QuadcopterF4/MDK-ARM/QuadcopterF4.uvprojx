@@ -10,7 +10,7 @@
       <TargetName>QuadcopterF4</TargetName>
       <ToolsetNumber>0x4</ToolsetNumber>
       <ToolsetName>ARM-ADS</ToolsetName>
-      <pCCUsed>6140001::V6.14.1::ARMCLANG</pCCUsed>
+      <pCCUsed>6150000::V6.15::ARMCLANG</pCCUsed>
       <uAC6>1</uAC6>
       <TargetOption>
         <TargetCommonOption>
@@ -339,7 +339,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F407xx</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;                      ../Drivers/STM32F4xx_HAL_Driver/Inc;                      ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;                      ../Drivers/CMSIS/Device/ST/STM32F4xx/Include;                      ../Drivers/CMSIS/Include;                      ..\..\lib</IncludePath>
+              <IncludePath>../Core/Inc;                                   ../Drivers/STM32F4xx_HAL_Driver/Inc;                                   ../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;                                   ../Drivers/CMSIS/Device/ST/STM32F4xx/Include;                                   ../Drivers/CMSIS/Include;                                   ..\..\lib</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -419,6 +419,11 @@
               <FilePath>..\..\lib\PID\PID.cpp</FilePath>
             </File>
             <File>
+              <FileName>iBus.cpp</FileName>
+              <FileType>8</FileType>
+              <FilePath>..\..\lib\iBus\iBus.cpp</FilePath>
+            </File>
+            <File>
               <FileName>main.c</FileName>
               <FileType>8</FileType>
               <FilePath>../Core/Src/main.c</FilePath>
@@ -432,6 +437,11 @@
               <FileName>stm32f4xx_hal_msp.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Core/Src/stm32f4xx_hal_msp.c</FilePath>
+            </File>
+            <File>
+              <FileName>Servo.cpp</FileName>
+              <FileType>8</FileType>
+              <FilePath>..\..\lib\Servo\Servo.cpp</FilePath>
             </File>
           </Files>
         </Group>
@@ -522,6 +532,11 @@
               <FileName>stm32f4xx_hal_tim_ex.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim_ex.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f4xx_hal_uart.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c</FilePath>
             </File>
           </Files>
         </Group>
