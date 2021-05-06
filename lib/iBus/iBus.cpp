@@ -1,13 +1,13 @@
 #include "main.h"
 #include "iBus.h"
 
-iBus::iBus(UART_HandleTypeDef* huart, TIM_HandleTypeDef* htim, uint32_t RX_channel, uint32_t IDLE_channel, uint32_t NRX_channel)
+iBus::iBus(UART_HandleTypeDef* huart, TIM_HandleTypeDef* htim, uint32_t RX_Channel, uint32_t IDLE_Channel, uint32_t NRX_Channel)
 {
 	Huart = huart;
 	Htim = htim;
-	HAL_TIM_IC_Start_IT(Htim, RX_channel);
-	HAL_TIM_OC_Start_IT(Htim, IDLE_channel);
-	HAL_TIM_OC_Start_IT(Htim, NRX_channel);
+	HAL_TIM_IC_Start_IT(Htim, RX_Channel);
+	HAL_TIM_OC_Start_IT(Htim, IDLE_Channel);
+	HAL_TIM_OC_Start_IT(Htim, NRX_Channel);
 }
 
 void iBus::RXComplete()
@@ -21,9 +21,7 @@ void iBus::RXComplete()
 			Channel[i / 2] = (Buffer[i + 3] << 8) | Buffer[i + 2];
 	}
 	else
-	{
 		CRCerror = 1;
-	}
 }
 
 const uint16_t* const iBus::ReturnChannelPointer(uint8_t channelNo)
@@ -41,17 +39,13 @@ void iBus::ComputeChecksum()
 void iBus::Receiving()
 {
 	if(!IsReceiving)
-	{
 		IsReceiving = 1;
-	}
 }
 
 void iBus::Idle()
 {
 	if(IsReceiving)
-	{
 		HAL_UART_Receive_DMA(Huart, Buffer, 32);
-	}
 }
 
 void iBus::NotReceiving()

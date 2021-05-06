@@ -16,11 +16,11 @@ PID::PID(double ts, double kp, double ki, double kd, double tf, bool sat_mode, d
 
 void PID::Update(double err)
 {
+	error[0] = error[1];
 	error[1] = err;
 	CalculatePID();
 	Saturation();
 	Clamping();
-	error[0] = error[1];
 }
 
 double PID::GetOutput()
@@ -39,32 +39,32 @@ void PID::CalculateP()
 //	I = I + !isClamped * Ki * Ts * I_input;
 //}
 
-//void PID::CalculateI()		//I_BackwardEuler
-//{
-//	I_input = error[1];
-//	I = I + !isClamped * Ki * Ts * I_input;
-//}
-
-void PID::CalculateI()			//I_Trapezoidal
-{	
-	I_input = (error[1] + error[0]) / 2;
-	I = I + !isClamped * Ki * Ts *  I_input;
+void PID::CalculateI()		//I_BackwardEuler
+{
+	I_input = error[1];
+	I = I + !isClamped * Ki * Ts * I_input;
 }
+
+//void PID::CalculateI()			//I_Trapezoidal
+//{	
+//	I_input = (error[1] + error[0]) / 2;
+//	I = I + !isClamped * Ki * Ts *  I_input;
+//}
 
 //void PID::CalculateD()			//D_ForwardEuler
 //{
 //	D = (Kd * (error[1] - error[0]) + (Tf - Ts) * D) / Tf;
 //}
 //
-//void PID::CalculateD()			//D_BackwardEuler
-//{
-//	D = (Kd * (error[1] - error[0]) + Tf * D) / (Tf + Ts);
-//}
-
-void PID::CalculateD()			//D_Trapezoidal
+void PID::CalculateD()			//D_BackwardEuler
 {
-	D = (2 * Kd * (error[1] - error[0]) + (2 * Tf - Ts) * D) / (2 * Tf + Ts);
+	D = (Kd * (error[1] - error[0]) + Tf * D) / (Tf + Ts);
 }
+
+//void PID::CalculateD()			//D_Trapezoidal
+//{
+//	D = (2 * Kd * (error[1] - error[0]) + (2 * Tf - Ts) * D) / (2 * Tf + Ts);
+//}
 
 void PID::CalculatePID()
 {

@@ -6,7 +6,7 @@ private:
 	double error[2] = {0};
 	double Kp, Ki, Kd, Tf, Ts;
 	double P, I, D, pid, pid_sat, I_input;
-	double sat_limits[2];
+	double sat_limits[2] = {70, 2047};
 	bool isSaturated, saturation_mode, isClamped, clamping_mode, signCheck;
 	void CalculateP();
 	void CalculateI();
