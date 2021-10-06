@@ -1,14 +1,15 @@
 #include "main.h"
 #include "Servo.h"
 
-Servo::Servo(iBus* ibus, uint8_t channelNo, float scale, float offset)
+Servo::Servo(iBus* Ibus, uint8_t kanal, float olcek, float offset)
 {
-	Channel_Raw = ibus->ReturnChannelPointer(channelNo);
-	Scale = scale;
+	ibus = Ibus;
+	Kanal = kanal;
+	Olcek = olcek;
 	Offset = offset;
 }
 
 float Servo::ChannelValue()
 {
-	return (*Channel_Raw + Offset) * Scale;
+	return (ibus->KanalVerisi(Kanal) + Offset) * Olcek;
 }

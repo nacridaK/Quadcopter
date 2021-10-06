@@ -65,20 +65,21 @@ DMA_HandleTypeDef hdma_usart6_rx;
 /* USER CODE BEGIN PV */
 
 Motor motor[4];
-DShot dshot[] = {139, 139, 139, 139};
-iBus* ibus;
+DShot dshot[] = {{&htim3, TIM_CHANNEL_1}, {&htim3, TIM_CHANNEL_2}, {&htim3, TIM_CHANNEL_3}, {&htim3, TIM_CHANNEL_4}};
+iBus ibus(&huart6, &htim5, TIM_CHANNEL_2, TIM_CHANNEL_1, TIM_CHANNEL_3);
 
 uint8_t emniyet;
 
-PozyxClass Pozyx(&hi2c1, 100);
+PozyxClass Pozyx(&hi2c1, 5);
 euler_angles_t acilar, referans;
 
 double kontrolSinyali[2];
 PID pid_roll, pid_pitch;
 double Katsayilar[] = {9, 0.5};
-uint16_t w = 480;
+uint16_t w = 280;
+uint8_t aralik;
 
-Servo servo[] = {{ibus, 0, 1, -1500}, {ibus, 1, 1, -1500}, {ibus, 2, 1, -1000}, {ibus, 4, 0.001, -1000}};
+//Servo servo[] = {{ibus, 0, 1, -1500}, {ibus, 1, 1, -1500}, {ibus, 2, 1, -1000}, {ibus, 4, 0.001, -1000}};
 int32_t Hiz[4];
 
 /* USER CODE END PV */
@@ -94,10 +95,9 @@ static void MX_TIM5_Init(void);
 static void MX_TIM7_Init(void);
 /* USER CODE BEGIN PFP */
 
-void DShot_PWM_Array_Update(TIM_HandleTypeDef*);
-void PID_Loop(TIM_HandleTypeDef*);
-
-void Bitti(UART_HandleTypeDef*);
+void DShot_Guncelleme(TIM_HandleTypeDef*);
+void PID_Dongusu(TIM_HandleTypeDef*);
+void PaketGeldi(UART_HandleTypeDef*);
 void Geliyor(TIM_HandleTypeDef*);
 void Gelmiyor(TIM_HandleTypeDef*);
 void AcikCevrimDenetleyici();
@@ -146,26 +146,27 @@ int main(void)
   MX_TIM7_Init();
   /* USER CODE BEGIN 2 */
 	
-	HAL_TIM_RegisterCallback(&htim3, HAL_TIM_PWM_PULSE_FINISHED_CB_ID, &DShot_PWM_Array_Update);
-	HAL_TIM_PWM_Start_DMA(&htim3, TIM_CHANNEL_1, dshot[0].PWM_Array, 32);
-	htim3.State = HAL_TIM_STATE_READY;
-	HAL_TIM_PWM_Start_DMA(&htim3, TIM_CHANNEL_2, dshot[1].PWM_Array, 32);
-	htim3.State = HAL_TIM_STATE_READY;
-	HAL_TIM_PWM_Start_DMA(&htim3, TIM_CHANNEL_3, dshot[2].PWM_Array, 32);
-	htim3.State = HAL_TIM_STATE_READY;
-	HAL_TIM_PWM_Start_DMA(&htim3, TIM_CHANNEL_4, dshot[3].PWM_Array, 32);
+// 	DShot Baslangiç
 	
-	pid_roll.SetTs(0.25);
-	pid_pitch.SetTs(0.25);
+	HAL_TIM_RegisterCallback(&htim3, HAL_TIM_PWM_PULSE_FINISHED_CB_ID, &DShot_Guncelleme);
+	for (uint8_t i = 0; i < 4; i++)
+		dshot[i].Basla();
+		
+// 	Denetleyici Baslangiç
+	
+//	pid_roll.SetTs(0.25);
+//	pid_pitch.SetTs(0.25);
+//	HAL_TIM_RegisterCallback(&htim7, HAL_TIM_PERIOD_ELAPSED_CB_ID, &PID_Dongusu);
+//	HAL_TIM_Base_Start_IT(&htim7);
 
-	HAL_TIM_RegisterCallback(&htim7, HAL_TIM_PERIOD_ELAPSED_CB_ID, &PID_Loop);
-	HAL_TIM_Base_Start_IT(&htim7);
+//	iBus Baslangiç
 	
-//	HAL_UART_RegisterCallback(&huart6, HAL_UART_RX_COMPLETE_CB_ID, &Bitti);	
+//	HAL_UART_RegisterCallback(&huart6, HAL_UART_RX_COMPLETE_CB_ID, &PaketGeldi);	
 //	HAL_TIM_RegisterCallback(&htim5, HAL_TIM_IC_CAPTURE_CB_ID, &Geliyor);
 //	HAL_TIM_RegisterCallback(&htim5, HAL_TIM_OC_DELAY_ELAPSED_CB_ID, &Gelmiyor);
-//	
-//	ibus = new iBus(&huart6, &htim5, TIM_CHANNEL_2, TIM_CHANNEL_1, TIM_CHANNEL_3);
+//	ibus.Basla();
+	
+//	Pozyx Baslangiç
 	
 	Pozyx.begin();
 
@@ -175,11 +176,13 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	pid_roll.SetKpGain(Katsayilar[0]);
-	pid_roll.SetKdGain(Katsayilar[1]);
+	AcikCevrimDenetleyici();
 		
-	pid_pitch.SetKpGain(Katsayilar[0]);
-	pid_pitch.SetKdGain(Katsayilar[1]);
+//	pid_roll.SetKpGain(Katsayilar[0]);
+//	pid_roll.SetKdGain(Katsayilar[1]);
+//		
+//	pid_pitch.SetKpGain(Katsayilar[0]);
+//	pid_pitch.SetKdGain(Katsayilar[1]);
 		
 	Pozyx.getEulerAngles_deg(&acilar);
 //	while(durum != POZYX_SUCCESS)
@@ -625,36 +628,37 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-void PID_Loop(TIM_HandleTypeDef *htim)
+void PID_Dongusu(TIM_HandleTypeDef *htim)
 {
 	pid_roll.Update(referans.roll - acilar.roll);
 	pid_pitch.Update(referans.pitch - acilar.pitch);
-	KapaliCevrimDenetleyici();
+	AcikCevrimDenetleyici();
 	HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
 }
 
-void DShot_PWM_Array_Update(TIM_HandleTypeDef *htim)
+void DShot_Guncelleme(TIM_HandleTypeDef *htim)
 {
+	// En yüksek degerli bit hesaplama, look-up table...
 	switch (htim->Channel)
 	{
 		case HAL_TIM_ACTIVE_CHANNEL_1:
-			dshot[0].update(motor[0].GetSpeedDShot() * (emniyet == 1));
+			dshot[0].update(motor[0].GetHizDShot() * (emniyet == 1));
 //		 * servo[3].ChannelValue()
 //			W[0] = w + pid_roll.GetOutput();
 //			W[0] = (w + k * acilar.roll);
 			break;
 		case HAL_TIM_ACTIVE_CHANNEL_2:
-			dshot[1].update(motor[1].GetSpeedDShot() * (emniyet == 1));
+			dshot[1].update(motor[1].GetHizDShot() * (emniyet == 1));
 //			W[1] = w + pid_pitch.GetOutput();
 //			W[1] = (w + k * acilar.pitch);
 			break;
 		case HAL_TIM_ACTIVE_CHANNEL_3:
-			dshot[2].update(motor[2].GetSpeedDShot() * (emniyet == 1));
+			dshot[2].update(motor[2].GetHizDShot() * (emniyet == 1));
 //			W[2] = w - pid_roll.GetOutput();
 //			W[2] = (w - k * acilar.roll);
 			break;
 		case HAL_TIM_ACTIVE_CHANNEL_4:
-			dshot[3].update(motor[3].GetSpeedDShot() * (emniyet == 1));
+			dshot[3].update(motor[3].GetHizDShot() * (emniyet == 1));
 //			W[3] = w - pid_pitch.GetOutput();
 //			W[3] = (w - k * acilar.pitch);
 			break;
@@ -663,14 +667,14 @@ void DShot_PWM_Array_Update(TIM_HandleTypeDef *htim)
 	}
 }
 
-void Bitti(UART_HandleTypeDef *huart)
+void PaketGeldi(UART_HandleTypeDef *huart)
 {
-	ibus->RXComplete();
+	ibus.PaketGeldi();
 }
 
 void Geliyor(TIM_HandleTypeDef *htim)
 {
-	ibus->Receiving();
+	ibus.Geliyor();
 }
 
 void Gelmiyor(TIM_HandleTypeDef *htim)
@@ -678,10 +682,10 @@ void Gelmiyor(TIM_HandleTypeDef *htim)
 	switch (htim->Channel)
 	{
 		case HAL_TIM_ACTIVE_CHANNEL_1:
-			ibus->Idle();
+			ibus.Beklemede();
 			break;
 		case HAL_TIM_ACTIVE_CHANNEL_3:
-			ibus->NotReceiving();
+			ibus.Gelmiyor();
 			break;
 		default:
 			break;
@@ -695,21 +699,21 @@ void AcikCevrimDenetleyici()
 //	motor[2].SetSpeedDShot(servo[2].ChannelValue() + servo[0].ChannelValue());
 //	motor[3].SetSpeedDShot(servo[2].ChannelValue() - servo[1].ChannelValue());
 	for	(uint8_t i = 0; i < 4; i++)
-		motor[i].SetSpeedDShot(Hiz[i]);
+		motor[i].SetHizDShot(Hiz[i]);
 }
 
 void KapaliCevrimDenetleyici()
 {
 	kontrolSinyali[0] = pid_roll.GetOutput();
 	kontrolSinyali[1] = pid_pitch.GetOutput();
-	motor[0].SetSpeedDShot(w - pid_pitch.GetOutput());
-	motor[1].SetSpeedDShot(w + pid_roll.GetOutput());
-	motor[2].SetSpeedDShot(w + pid_pitch.GetOutput());
-	motor[3].SetSpeedDShot(w - pid_roll.GetOutput());
-	Hiz[0] = motor[0].GetSpeedDShot();
-	Hiz[1] = motor[1].GetSpeedDShot();
-	Hiz[2] = motor[2].GetSpeedDShot();
-	Hiz[3] = motor[3].GetSpeedDShot();
+	motor[0].SetHizDShot(w - pid_pitch.GetOutput());
+	motor[1].SetHizDShot(w + pid_roll.GetOutput());
+	motor[2].SetHizDShot(w + pid_pitch.GetOutput());
+	motor[3].SetHizDShot(w - pid_roll.GetOutput());
+	Hiz[0] = motor[0].GetHizDShot();
+	Hiz[1] = motor[1].GetHizDShot();
+	Hiz[2] = motor[2].GetHizDShot();
+	Hiz[3] = motor[3].GetHizDShot();
 }
 
 /* USER CODE END 4 */

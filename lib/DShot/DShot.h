@@ -1,4 +1,6 @@
+#include <main.h>
 #include <stdint.h>
+#define LENGTH 50
 
 struct dshotProtocolControl
 {
@@ -10,7 +12,9 @@ class DShot
 {
 	private:
 		dshotProtocolControl pcb;
-	  const uint32_t PWM_const;
+		TIM_HandleTypeDef* Htim; 
+		uint32_t Channel;
+	  uint32_t PWM_const;
 		uint16_t wait;
 		uint16_t repeat;
 		uint32_t bitToPWM(bool bit);
@@ -19,9 +23,11 @@ class DShot
 		void convertDshotPacketToPWM_Array(uint16_t packet);
 	
 	public:
-		DShot(uint32_t ARR);
-		uint32_t PWM_Array[32];
+		DShot(TIM_HandleTypeDef* htim, uint8_t channel);
+		uint32_t PWM_Array[LENGTH];
+		HAL_StatusTypeDef Basla();
+		HAL_StatusTypeDef Dur();
 		void update(uint16_t value = 0, bool requestTelemetry = false);
 		void setWait(uint16_t _wait);
-		void setRepeat(uint16_t _repeat);
+		void setRepeat(uint16_t _repeat);	
 };

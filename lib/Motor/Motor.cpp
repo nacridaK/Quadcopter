@@ -1,30 +1,30 @@
 #include "Motor.h"
 
-Motor::Motor(uint8_t poleCount) : PoleCount(poleCount)
+Motor::Motor(uint8_t kutupSayisi) : KutupSayisi(kutupSayisi)
 {
 }
 
-uint16_t Motor::GetSpeedDShot()
+uint16_t Motor::GetHizDShot()
 {
-	return SpeedDShot;
+	return HizDShot;
 }
 
-void Motor::SetSpeedDShot(int32_t DesiredSpeedDShot)
+void Motor::SetHizDShot(int32_t IstenenHizDShot)
 {
-	if (DesiredSpeedDShot > DShotMAX)
-		SpeedDShot = DShotMAX;
-	else if (DesiredSpeedDShot < DShotMIN)
-		SpeedDShot = DShotMIN;
+	if (IstenenHizDShot > DShotMAX)
+		HizDShot = DShotMAX;
+	else if (IstenenHizDShot < DShotMIN)
+		HizDShot = DShotMIN;
 	else
-		SpeedDShot = DesiredSpeedDShot;
+		HizDShot = IstenenHizDShot;
 }
 
-uint16_t Motor::GetSpeedRPM()
+uint16_t Motor::GetHizRPM()
 {
-	return SpeedRPM;
+	return HizRPM;
 }
 
-void Motor::SetSpeedRPM(uint16_t ERPM)
+void Motor::SetHizRPM(uint16_t ERPM)
 {
-	//Buraya ERPM -> RPM dönüþümü eklenecek. Telemetri PDF'inde bilgilendirme var.
+	//Buraya ERPM -> RPM dönüsümü eklenecek. Telemetri PDF'inde bilgilendirme var.
 }

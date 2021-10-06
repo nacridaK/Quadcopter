@@ -8,16 +8,18 @@ class iBus
 private:
 	UART_HandleTypeDef* Huart;
 	TIM_HandleTypeDef* Htim;
-	uint16_t Channel[10], Checksum_cc, Checksum_rx;
-	uint8_t Buffer[32], IsReceiving, CRCerror;
-	void ComputeChecksum();
+	uint32_t RX_Kanal, IDLE_Kanal, NRX_Kanal;
+	uint16_t Kanal[10], Checksum_CC, Checksum_RX;
+	uint8_t AraBellek[32], GeliyorMu, CRC_Hata;
+	void ChecksumHesapla();
 
 public:
-	iBus(UART_HandleTypeDef* huart, TIM_HandleTypeDef* htim, uint32_t RX_channel, uint32_t IDLE_channel, uint32_t NRX_channel);
-	void Start();
-	void Receiving();
-	void Idle();
-	void NotReceiving();
-  void RXComplete();
-	const uint16_t* const ReturnChannelPointer(uint8_t channel);
+	iBus(UART_HandleTypeDef* huart, TIM_HandleTypeDef* htim, uint32_t rx_Channel, uint32_t idle_Channel, uint32_t nrx_Channel);
+	void Basla();
+	void Dur();
+	void Geliyor();
+	void Beklemede();
+	void Gelmiyor();
+  void PaketGeldi();
+	uint16_t KanalVerisi(uint8_t kanal);
 };

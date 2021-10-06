@@ -3,13 +3,14 @@
 class Motor
 {
 private:
-	const uint8_t PoleCount;
-	const uint16_t DShotMAX = 2047, DShotMIN = 48;
-	uint16_t SpeedDShot, SpeedRPM;
+	const uint8_t KutupSayisi;
+	const uint16_t DShotMAX = 200, DShotMIN = 0;
+	//2047 - 48
+	uint16_t HizDShot, HizRPM;
 public:
 	Motor(uint8_t poleCount = 0);
-	uint16_t GetSpeedDShot();
-	void SetSpeedDShot(int32_t DesiredSpeedDShot);
-	uint16_t GetSpeedRPM();
-	void SetSpeedRPM(uint16_t speedRPM);
+	uint16_t GetHizDShot();
+	void SetHizDShot(int32_t IstenenHizDShot);
+	uint16_t GetHizRPM();
+	void SetHizRPM(uint16_t speedRPM);
 };

@@ -1,14 +1,31 @@
 #include "DShot.h"
+#include <stm32f4xx_hal_tim.h>
 
-DShot::DShot(uint32_t ARR) : PWM_const(.375 * (ARR + 1))
+DShot::DShot(TIM_HandleTypeDef* htim, uint8_t channel)
 {
-	for (uint8_t i = 0; i < 16; i++)
-		PWM_Array[i] = PWM_const;
+	Htim = htim;
+	Channel = channel;
 }
 
 uint32_t DShot::bitToPWM(bool bit)
 {
 	return PWM_const << bit;
+}
+
+HAL_StatusTypeDef DShot::Basla()
+{
+	PWM_const = .375 * (Htim->Init.Period + 1);
+	for (uint8_t i = 0; i < 16; i++)
+		PWM_Array[i] = PWM_const;
+	
+	HAL_StatusTypeDef ret = HAL_TIM_PWM_Start_DMA(Htim, Channel, PWM_Array, LENGTH);
+	Htim->State = HAL_TIM_STATE_READY;
+	return ret;
+}
+
+HAL_StatusTypeDef DShot::Dur()
+{
+	return HAL_TIM_PWM_Stop_DMA(Htim, Channel);
 }
 
 unsigned DShot::computeChecksum(uint16_t packet)
